@@ -1,0 +1,7 @@
+
+Unit 1: Process Management
+- Process Control Block (PCB): Contains process state, PID, program counter.
+- CPU Scheduling: First-Come-First-Served (FCFS), Shortest Job First (SJF), and Round Robin algorithms.
+Unit 2: Memory Management
+- Virtual Memory: Uses Paging and Segmentation.
+- Page Replacement Algorithms: FIFO, LRU (Least Recently Used), and Optimal Page Replacement.
