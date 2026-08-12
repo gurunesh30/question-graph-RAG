@@ -28,6 +28,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let uri = env::var("NEO4J_URI").expect("NEO4J_URI missing");
     let user = env::var("NEO4J_USER").expect("NEO4J_USER missing");
     let password = env::var("NEO4J_PASSWORD").expect("NEO4J_PASSWORD missing");
+    // Add this line to read database name
+    let db_name = env::var("NEO4J_DATABASE").unwrap_or_else(|_| "neo4j".to_string());
 
     println!("[Rust Engine] Connecting to Neo4j Cloud at {}...", uri);
 
@@ -35,6 +37,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .uri(&uri)
         .user(&user)
         .password(&password)
+        // Add this line to specify the database
+        .db(&db_name)
         .build()?;
 
     let graph = Graph::connect(config).await?;
