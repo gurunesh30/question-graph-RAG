@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+import time
 import subprocess
 import requests
 from dotenv import load_dotenv
@@ -93,6 +94,36 @@ def invoke_rust_engine(kg_payload):
         
     print(stdout)
 
+def test():
+    if not OPENROUTER_API_KEY:
+        print("Error: OPENROUTER_API_KEY is missing from .env file.")
+        sys.exit(1)
+
+    print("[Test] Starting KG pipeline benchmark...\n")
+    total_start = time.perf_counter()
+
+    # Step 1: Load syllabus
+    t0 = time.perf_counter()
+    syllabus = load_syllabus()
+    t1 = time.perf_counter()
+    print(f"[Test] Syllabus loaded            : {t1 - t0:.3f}s")
+
+    # Step 2: LLM extraction via OpenRouter
+    t0 = time.perf_counter()
+    extracted_data = extract_kg_via_openrouter(syllabus)
+    t1 = time.perf_counter()
+    print(f"[Test] LLM extraction (OpenRouter): {t1 - t0:.3f}s")
+
+    # Step 3: Rust engine writes to Neo4j
+    t0 = time.perf_counter()
+    invoke_rust_engine(extracted_data)
+    t1 = time.perf_counter()
+    print(f"[Test] Rust KG engine (Neo4j)     : {t1 - t0:.3f}s")
+
+    total_end = time.perf_counter()
+    print(f"\n[Test] Total KG pipeline time     : {total_end - total_start:.3f}s")
+
+
 if __name__ == "__main__":
     if not OPENROUTER_API_KEY:
         print("Error: OPENROUTER_API_KEY is missing from .env file.")
@@ -101,3 +132,4 @@ if __name__ == "__main__":
     syllabus = load_syllabus()
     extracted_data = extract_kg_via_openrouter(syllabus)
     invoke_rust_engine(extracted_data)
+    test()
