@@ -1,24 +1,39 @@
 import os
 import sys
 import json
-import time
 import subprocess
 import requests
 from dotenv import load_dotenv
 
-# Automatically load key/value pairs from .env into process environment
 load_dotenv()
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+RUST_BINARY = "./rust_kg_engine/target/release/rust_kg_engine"
 
-def load_syllabus(file_path="syllabus.txt"):
-    if os.path.exists(file_path):
-        with open(file_path, "r") as f:
-            return f.read()
-    return ""
+def extract_text_from_pdf_via_rust(pdf_path):
+    """Invokes Rust core to extract text from a PDF document."""
+    print(f"[Python] Requesting Rust binary to extract text from '{pdf_path}'...")
+    
+    if not os.path.exists(RUST_BINARY):
+        print("[Error] Build the Rust binary first using 'cargo build --release' inside rust_kg_engine.")
+        sys.exit(1)
 
-def extract_kg_via_openrouter(syllabus_text):
-    print("[Python] Sending extraction prompt to OpenRouter...")
+    result = subprocess.run(
+        [RUST_BINARY, "--extract-pdf", pdf_path],
+        capture_output=True,
+        text=True
+    )
+    
+    if result.returncode != 0:
+        print(f"[Error in Rust PDF Extractor]:\n{result.stderr}")
+        sys.exit(1)
+        
+    extracted_text = result.stdout
+    print(f"[Python] Successfully extracted {len(extracted_text)} characters from PDF.")
+    return extracted_text
+
+def extract_kg_via_openrouter(text_content):
+    print("[Python] Sending extracted syllabus text to OpenRouter...")
     url = "https://openrouter.ai/api/v1/chat/completions"
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
@@ -30,55 +45,42 @@ def extract_kg_via_openrouter(syllabus_text):
     Extract a fully connected Knowledge Graph from the syllabus below.
     
     NODE CLASSIFICATION RULES:
-    1. 'hierarchy': Units, Chapters, or Subjects (e.g., "Unit 1", "Operating Systems").
-    2. 'concept': Core theoretical academic topics (e.g., "Process Management", "CPU Scheduling", "Virtual Memory").
-    3. 'textual': Specific algorithms, data structures, or terms (e.g., "PCB", "FCFS", "FIFO", "LRU").
+    1. 'hierarchy': Units, Chapters, or Subjects.
+    2. 'concept': Core theoretical academic topics.
+    3. 'textual': Specific algorithms, data structures, or terms.
 
-    RELATIONSHIP RULES (CRITICAL):
-    1. 'PART_OF': Use ONLY between hierarchy nodes (e.g., "Unit 1" -> PART_OF -> "Operating Systems").
-    2. 'INCLUDE_IN': MUST link concepts to their parent hierarchy unit (e.g., "Process Management" -> INCLUDE_IN -> "Unit 1").
-    3. 'IS_A': Use ONLY to link specific textual entities/algorithms to their concept (e.g., "Round Robin" -> IS_A -> "CPU Scheduling", "PCB" -> IS_A -> "Process Management").
+    RELATIONSHIP RULES:
+    1. 'PART_OF': Use ONLY between hierarchy nodes.
+    2. 'INCLUDE_IN': MUST link concepts to their parent hierarchy unit.
+    3. 'IS_A': Use ONLY to link specific textual entities/algorithms to their concept.
 
-    Ensure EVERY concept is connected to a unit via INCLUDE_IN so the graph forms a single connected tree/network.
-
-    Return PURE JSON format matching this schema:
+    Return PURE JSON format:
     {{
       "triples": [
         {{"head": "Unit 1", "head_type": "hierarchy", "relation": "part_of", "tail": "Operating Systems", "tail_type": "hierarchy"}},
         {{"head": "Process Management", "head_type": "concept", "relation": "include_in", "tail": "Unit 1", "tail_type": "hierarchy"}},
-        {{"head": "CPU Scheduling", "head_type": "concept", "relation": "include_in", "tail": "Unit 1", "tail_type": "hierarchy"}},
-        {{"head": "PCB", "head_type": "textual", "relation": "is_a", "tail": "Process Management", "tail_type": "concept"}},
-        {{"head": "FCFS", "head_type": "textual", "relation": "is_a", "tail": "CPU Scheduling", "tail_type": "concept"}}
+        {{"head": "PCB", "head_type": "textual", "relation": "is_a", "tail": "Process Management", "tail_type": "concept"}}
       ]
     }}
 
     Syllabus:
-    {syllabus_text}
+    {text_content}
     """
     
     body = {
-        "model": "nvidia/nemotron-3.5-lightning:free",
+        "model": "openai/gpt-4o-mini",
         "response_format": {"type": "json_object"},
         "messages": [{"role": "user", "content": prompt}]
     }
     
     resp = requests.post(url, headers=headers, json=body)
     resp.raise_for_status()
-    
-    content = resp.json()["choices"][0]["message"]["content"]
-    return json.loads(content)
+    return json.loads(resp.json()["choices"][0]["message"]["content"])
 
-def invoke_rust_engine(kg_payload):
-    print("[Python] Streaming extracted JSON payload to Rust Native Core...")
-    rust_binary = "./rust_kg_engine/target/release/rust_kg_engine"
-    
-    if not os.path.exists(rust_binary):
-        print("[Error] Build the Rust binary first using 'cargo build --release' inside rust_kg_engine directory.")
-        sys.exit(1)
-
-    # Pass down the existing OS environment (which now includes loaded .env vars)
+def invoke_rust_engine_ingest(kg_payload):
+    print("[Python] Streaming JSON payload to Rust Core for Neo4j ingestion...")
     process = subprocess.Popen(
-        [rust_binary],
+        [RUST_BINARY],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -87,9 +89,8 @@ def invoke_rust_engine(kg_payload):
     )
     
     stdout, stderr = process.communicate(input=json.dumps(kg_payload))
-    
     if process.returncode != 0:
-        print(f"[Error in Rust Core]:\n{stderr}")
+        print(f"[Error in Rust Ingestion]:\n{stderr}")
         sys.exit(1)
         
     print(stdout)
@@ -123,13 +124,22 @@ def test():
     total_end = time.perf_counter()
     print(f"\n[Test] Total KG pipeline time     : {total_end - total_start:.3f}s")
 
-
 if __name__ == "__main__":
-    if not OPENROUTER_API_KEY:
-        print("Error: OPENROUTER_API_KEY is missing from .env file.")
+    if len(sys.argv) > 1:
+        pdf_file = sys.argv[1]
+    else:
+        pdf_file = "syllabus.pdf"
+
+    if not os.path.exists(pdf_file):
+        print(f"Usage: python main.py <path_to_pdf>")
+        print(f"Error: Could not find default file '{pdf_file}'")
         sys.exit(1)
-        
-    syllabus = load_syllabus()
-    extracted_data = extract_kg_via_openrouter(syllabus)
-    invoke_rust_engine(extracted_data)
-    test()
+
+    # Step 1: Extract Text via Rust
+    raw_text = extract_text_from_pdf_via_rust(pdf_file)
+    
+    # Step 2: Extract Triples via LLM
+    kg_data = extract_kg_via_openrouter(raw_text)
+    
+    # Step 3: Ingest Triples into Neo4j via Rust
+    invoke_rust_engine_ingest(kg_data)
