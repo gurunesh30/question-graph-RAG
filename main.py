@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+import time
 import subprocess
 import requests
 from dotenv import load_dotenv
@@ -10,10 +11,16 @@ load_dotenv()
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 RUST_BINARY = "./rust_kg_engine/target/release/rust_kg_engine"
 
+def load_syllabus(file_path="syllabus.txt"):
+    if os.path.exists(file_path):
+        with open(file_path, "r") as f:
+            return f.read()
+    return ""
+
 def extract_text_from_pdf_via_rust(pdf_path):
     """Invokes Rust core to extract text from a PDF document."""
     print(f"[Python] Requesting Rust binary to extract text from '{pdf_path}'...")
-    
+
     if not os.path.exists(RUST_BINARY):
         print("[Error] Build the Rust binary first using 'cargo build --release' inside rust_kg_engine.")
         sys.exit(1)
@@ -23,11 +30,11 @@ def extract_text_from_pdf_via_rust(pdf_path):
         capture_output=True,
         text=True
     )
-    
+
     if result.returncode != 0:
         print(f"[Error in Rust PDF Extractor]:\n{result.stderr}")
         sys.exit(1)
-        
+
     extracted_text = result.stdout
     print(f"[Python] Successfully extracted {len(extracted_text)} characters from PDF.")
     return extracted_text
@@ -39,11 +46,11 @@ def extract_kg_via_openrouter(text_content):
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         "Content-Type": "application/json"
     }
-    
+
     prompt = f"""
     You are an expert Knowledge Graph builder following the KAQG paper specification.
     Extract a fully connected Knowledge Graph from the syllabus below.
-    
+
     NODE CLASSIFICATION RULES:
     1. 'hierarchy': Units, Chapters, or Subjects.
     2. 'concept': Core theoretical academic topics.
@@ -66,13 +73,13 @@ def extract_kg_via_openrouter(text_content):
     Syllabus:
     {text_content}
     """
-    
+
     body = {
         "model": "openai/gpt-4o-mini",
         "response_format": {"type": "json_object"},
         "messages": [{"role": "user", "content": prompt}]
     }
-    
+
     resp = requests.post(url, headers=headers, json=body)
     resp.raise_for_status()
     return json.loads(resp.json()["choices"][0]["message"]["content"])
@@ -87,12 +94,12 @@ def invoke_rust_engine_ingest(kg_payload):
         text=True,
         env=os.environ
     )
-    
+
     stdout, stderr = process.communicate(input=json.dumps(kg_payload))
     if process.returncode != 0:
         print(f"[Error in Rust Ingestion]:\n{stderr}")
         sys.exit(1)
-        
+
     print(stdout)
 
 def test():
@@ -117,7 +124,7 @@ def test():
 
     # Step 3: Rust engine writes to Neo4j
     t0 = time.perf_counter()
-    invoke_rust_engine(extracted_data)
+    invoke_rust_engine_ingest(extracted_data)
     t1 = time.perf_counter()
     print(f"[Test] Rust KG engine (Neo4j)     : {t1 - t0:.3f}s")
 
@@ -137,9 +144,9 @@ if __name__ == "__main__":
 
     # Step 1: Extract Text via Rust
     raw_text = extract_text_from_pdf_via_rust(pdf_file)
-    
+
     # Step 2: Extract Triples via LLM
     kg_data = extract_kg_via_openrouter(raw_text)
-    
+
     # Step 3: Ingest Triples into Neo4j via Rust
     invoke_rust_engine_ingest(kg_data)

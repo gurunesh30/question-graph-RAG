@@ -53,13 +53,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let uri = env::var("NEO4J_URI").expect("NEO4J_URI missing");
     let user = env::var("NEO4J_USER").expect("NEO4J_USER missing");
     let password = env::var("NEO4J_PASSWORD").expect("NEO4J_PASSWORD missing");
+    let db_name = env::var("NEO4J_DATABASE").unwrap_or_else(|_| "neo4j".to_string());
+
+    println!("[Rust Engine] Connecting to Neo4j Cloud at {}...", uri);
 
     let config = ConfigBuilder::default()
         .uri(&uri)
         .user(&user)
         .password(&password)
+        .db(db_name.as_str())
         .build()?;
     let graph = Graph::connect(config).await?;
+
+    println!("[Rust Engine] Processing {} triples...", payload.triples.len());
 
     let mut txn = graph.start_txn().await?;
 
