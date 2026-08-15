@@ -38,7 +38,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .user(&user)
         .password(&password)
         // Add this line to specify the database
-        .db(&db_name)
+        .db(db_name.as_str())
         .build()?;
 
     let graph = Graph::connect(config).await?;

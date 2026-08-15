@@ -25,22 +25,32 @@ def extract_kg_via_openrouter(syllabus_text):
     }
     
     prompt = f"""
-    Extract a Knowledge Graph from this syllabus according to KAQG rules.
-    Classify node labels strictly into:
-    - 'hierarchy' (Units/Chapters)
-    - 'concept' (Core academic subjects)
-    - 'textual' (Specific details/facts/algorithms)
+    You are an expert Knowledge Graph builder following the KAQG paper specification.
+    Extract a fully connected Knowledge Graph from the syllabus below.
     
-    Use relations: 'part_of', 'include_in', 'is_a'.
-    
-    Return pure JSON:
+    NODE CLASSIFICATION RULES:
+    1. 'hierarchy': Units, Chapters, or Subjects (e.g., "Unit 1", "Operating Systems").
+    2. 'concept': Core theoretical academic topics (e.g., "Process Management", "CPU Scheduling", "Virtual Memory").
+    3. 'textual': Specific algorithms, data structures, or terms (e.g., "PCB", "FCFS", "FIFO", "LRU").
+
+    RELATIONSHIP RULES (CRITICAL):
+    1. 'PART_OF': Use ONLY between hierarchy nodes (e.g., "Unit 1" -> PART_OF -> "Operating Systems").
+    2. 'INCLUDE_IN': MUST link concepts to their parent hierarchy unit (e.g., "Process Management" -> INCLUDE_IN -> "Unit 1").
+    3. 'IS_A': Use ONLY to link specific textual entities/algorithms to their concept (e.g., "Round Robin" -> IS_A -> "CPU Scheduling", "PCB" -> IS_A -> "Process Management").
+
+    Ensure EVERY concept is connected to a unit via INCLUDE_IN so the graph forms a single connected tree/network.
+
+    Return PURE JSON format matching this schema:
     {{
       "triples": [
         {{"head": "Unit 1", "head_type": "hierarchy", "relation": "part_of", "tail": "Operating Systems", "tail_type": "hierarchy"}},
-        {{"head": "PCB", "head_type": "textual", "relation": "is_a", "tail": "Process Management", "tail_type": "concept"}}
+        {{"head": "Process Management", "head_type": "concept", "relation": "include_in", "tail": "Unit 1", "tail_type": "hierarchy"}},
+        {{"head": "CPU Scheduling", "head_type": "concept", "relation": "include_in", "tail": "Unit 1", "tail_type": "hierarchy"}},
+        {{"head": "PCB", "head_type": "textual", "relation": "is_a", "tail": "Process Management", "tail_type": "concept"}},
+        {{"head": "FCFS", "head_type": "textual", "relation": "is_a", "tail": "CPU Scheduling", "tail_type": "concept"}}
       ]
     }}
-    
+
     Syllabus:
     {syllabus_text}
     """
