@@ -1,10 +1,4 @@
-Here is a production-ready **`README.md`** file tailored specifically to your hybrid 60% Python / 40% Rust Knowledge Graph project.
 
-You can save this directly into your project root as `README.md`.
-
----
-
-```markdown
 # KAQG Knowledge Graph Generator
 
 A high-performance hybrid system (**60% Python / 40% Rust**) built to parse educational syllabi, extract structured domain entities using LLMs via OpenRouter, and ingest multi-layered Knowledge Graphs into **Neo4j AuraDB**.
