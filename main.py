@@ -3,6 +3,8 @@ import sys
 import json
 import time
 import subprocess
+import argparse
+from pathlib import Path
 import requests
 from dotenv import load_dotenv
 
@@ -102,51 +104,77 @@ def invoke_rust_engine_ingest(kg_payload):
 
     print(stdout)
 
-def test():
-    if not OPENROUTER_API_KEY:
-        print("Error: OPENROUTER_API_KEY is missing from .env file.")
-        sys.exit(1)
-
-    print("[Test] Starting KG pipeline benchmark...\n")
-    total_start = time.perf_counter()
-
-    # Step 1: Load syllabus
-    t0 = time.perf_counter()
-    syllabus = load_syllabus()
-    t1 = time.perf_counter()
-    print(f"[Test] Syllabus loaded            : {t1 - t0:.3f}s")
-
-    # Step 2: LLM extraction via OpenRouter
-    t0 = time.perf_counter()
-    extracted_data = extract_kg_via_openrouter(syllabus)
-    t1 = time.perf_counter()
-    print(f"[Test] LLM extraction (OpenRouter): {t1 - t0:.3f}s")
-
-    # Step 3: Rust engine writes to Neo4j
-    t0 = time.perf_counter()
-    invoke_rust_engine_ingest(extracted_data)
-    t1 = time.perf_counter()
-    print(f"[Test] Rust KG engine (Neo4j)     : {t1 - t0:.3f}s")
-
-    total_end = time.perf_counter()
-    print(f"\n[Test] Total KG pipeline time     : {total_end - total_start:.3f}s")
-
-if __name__ == "__main__":
-    if len(sys.argv) > 1:
-        pdf_file = sys.argv[1]
-    else:
-        pdf_file = "syllabus.pdf"
-
+def run_ingestion_pipeline(pdf_file):
+    """Phase 1-3: PDF -> triples -> Neo4j."""
     if not os.path.exists(pdf_file):
         print(f"Usage: python main.py <path_to_pdf>")
         print(f"Error: Could not find default file '{pdf_file}'")
         sys.exit(1)
 
-    # Step 1: Extract Text via Rust
     raw_text = extract_text_from_pdf_via_rust(pdf_file)
-
-    # Step 2: Extract Triples via LLM
     kg_data = extract_kg_via_openrouter(raw_text)
-
-    # Step 3: Ingest Triples into Neo4j via Rust
     invoke_rust_engine_ingest(kg_data)
+
+def run_score_pipeline():
+    """Phase 4: Centrality + IRT difficulty scoring."""
+    from kg.centrality import run_scoring_pipeline
+    t0 = time.perf_counter()
+    updated = run_scoring_pipeline()
+    print(f"[Score] Wrote difficulty scores to {updated} concept nodes in {time.perf_counter() - t0:.3f}s")
+    return updated
+
+def run_generate_pipeline(args):
+    """Phase 5: Subgraph retrieval -> MCQ generation -> export."""
+    from kg.generation import generate_questions
+    questions = generate_questions(
+        difficulty=args.difficulty,
+        count=args.count,
+    )
+    payload = {
+        "difficulty": args.difficulty,
+        "count": len(questions),
+        "questions": questions,
+    }
+    output_path = args.output
+    if output_path is None:
+        base = args.difficulty or "questions"
+        output_path = f"{base}.json"
+    with open(output_path, "w") as f:
+        json.dump(payload, f, indent=2)
+    print(f"[Generate] Wrote {len(questions)} questions to '{output_path}'.")
+    return output_path
+
+def build_parser():
+    parser = argparse.ArgumentParser(
+        prog="kaqg",
+        description="Knowledge Augmented Question Generation pipeline.",
+    )
+    parser.add_argument("pdf", nargs="?", default="syllabus.pdf",
+                        help="PDF syllabus to ingest (default: syllabus.pdf)")
+    parser.add_argument("--score", action="store_true",
+                        help="Compute centrality + IRT difficulty for concept nodes.")
+    parser.add_argument("--generate-qg", action="store_true",
+                        help="Generate MCQ question bank from the Neo4j graph.")
+    parser.add_argument("--difficulty", choices=["easy", "medium", "hard"], default="medium",
+                        help="Difficulty band for --generate-qg (default: medium).")
+    parser.add_argument("--count", type=int, default=5,
+                        help="Number of questions to generate (default: 5).")
+    parser.add_argument("--output", type=Path, default=None,
+                        help="Output file for generated question bank (JSON).")
+    return parser
+
+def main():
+    args = build_parser().parse_args()
+
+    if args.score:
+        run_score_pipeline()
+        return
+
+    if args.generate_qg:
+        run_generate_pipeline(args)
+        return
+
+    run_ingestion_pipeline(args.pdf)
+
+if __name__ == "__main__":
+    main()
