@@ -1,0 +1,19 @@
+[package]
+name = "kaqg-ingest"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "kaqg_ingest"
+path = "src/main.rs"
+
+[dependencies]
+kaqg-core = { path = "../core" }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+neo4rs = { workspace = true }
+pdf-extract = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
