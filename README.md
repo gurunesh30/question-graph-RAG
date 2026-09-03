@@ -180,10 +180,40 @@ ORDER BY DetailCount DESC
 
 ## 🛠️ Tech Stack
 
-* **Python:** `requests`, `python-dotenv`, `subprocess`
-* **Rust:** `tokio` (Async runtime), `serde` & `serde_json` (Deserialization), `neo4rs` (Async Bolt driver)
+* **Python:** `requests`, `python-dotenv`, `subprocess`, `neo4j` driver
+* **Rust:** `tokio` (Async runtime), `serde` & `serde_json` (Deserialization), `neo4rs` (Async Bolt driver), `pdf-extract`
+* **Rust binaries:** `rust_kg_engine` (PDF extraction + Neo4j ingestion), `pagerank` (PageRank power-iteration micro-service)
 * **LLM Engine:** GPT-4o-mini via OpenRouter API
 * **Graph Engine:** Neo4j 5+ (AuraDB Cloud)
+
+---
+
+## 🎯 CLI Usage
+
+```bash
+# Phase 1-3: PDF → triples → Neo4j
+python main.py syllabus.pdf
+
+# Phase 4: Centrality + IRT difficulty scoring
+python main.py --score
+
+# Phase 5: Generate MCQ question bank (writes <difficulty>.json)
+python main.py --generate-qg --difficulty hard --count 5 --output hard.json
+```
+
+Difficulty bands map to the IRT range `[0.1, 1.0]` as follows:
+
+| Difficulty | Range          |
+|------------|----------------|
+| easy       | `b < 0.4`      |
+| medium     | `0.4 ≤ b < 0.7`|
+| hard       | `b ≥ 0.7`      |
+
+Run the offline smoke tests with:
+
+```bash
+python tests/test_smoke.py
+```
 
 ---
 
