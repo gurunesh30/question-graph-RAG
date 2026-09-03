@@ -87,7 +87,9 @@ def _normalise(scores: list[float]) -> list[float]:
         # All concepts are equally central; pick the midpoint difficulty.
         mid = (MIN_DIFFICULTY + MAX_DIFFICULTY) / 2.0
         return [mid for _ in scores]
-    return [MIN_DIFFICULTY + (s - lo) * (MAX_DIFFICULTY - MIN_DIFFICULTY) / span for s in scores]
+    scaled = [MIN_DIFFICULTY + (s - lo) * (MAX_DIFFICULTY - MIN_DIFFICULTY) / span for s in scores]
+    # Guard against floating-point drift past the inclusive upper bound.
+    return [min(MAX_DIFFICULTY, max(MIN_DIFFICULTY, x)) for x in scaled]
 
 
 def compute_scores(session) -> list[ConceptScore]:
