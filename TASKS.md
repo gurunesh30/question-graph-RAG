@@ -28,18 +28,18 @@
 ---
 
 ## Phase 4: Concept Centrality & Difficulty Scoring Engine
-- [/] **Task 4.1:** Write Cypher query module to compute Degree Centrality for all `concept` nodes
-- [ ] **Task 4.2:** Implement Rust PageRank calculation service using `neo4rs`
-- [ ] **Task 4.3:** Normalize raw centrality scores into normalized difficulty scores ($b \in [0.1, 1.0]$)
-- [ ] **Task 4.4:** Batch update Neo4j `concept` nodes with `difficulty` and `centrality` properties
-- [ ] **Task 4.5:** Create CLI command `python main.py --score` to trigger scoring execution
+- [x] **Task 4.1:** Write Cypher query module to compute Degree Centrality for all `concept` nodes
+- [x] **Task 4.2:** Implement Rust PageRank calculation service using `neo4rs`
+- [x] **Task 4.3:** Normalize raw centrality scores into normalized difficulty scores ($b \in [0.1, 1.0]$)
+- [x] **Task 4.4:** Batch update Neo4j `concept` nodes with `difficulty` and `centrality` properties
+- [x] **Task 4.5:** Create CLI command `python main.py --score` to trigger scoring execution
 
 ---
 
 ## Phase 5: Question Generation & Retrieval System
-- [ ] **Task 5.1:** Build Subgraph Retrieval Sampler (Extract target concept + connected `textual` facts + parent `hierarchy`)
-- [ ] **Task 5.2:** Implement Difficulty Filter (Filter subgraphs by requested difficulty: Easy $b < 0.4$, Medium $0.4 \le b < 0.7$, Hard $b \ge 0.7$)
-- [ ] **Task 5.3:** Create KAQG Question Generation Prompt template in Python
-- [ ] **Task 5.4:** Generate structured MCQ output JSON (Question, Options A/B/C/D, Correct Answer, Explanation)
-- [ ] **Task 5.5:** Implement CLI export flag (`python main.py --generate-qg --difficulty hard --output questions.json`)
-- [ ] **Task 5.6:** Final end-to-end verification and performance benchmarks
+- [x] **Task 5.1:** Build Subgraph Retrieval Sampler (Extract target concept + connected `textual` facts + parent `hierarchy`)
+- [x] **Task 5.2:** Implement Difficulty Filter (Filter subgraphs by requested difficulty: Easy $b < 0.4$, Medium $0.4 \le b < 0.7$, Hard $b \ge 0.7$)
+- [x] **Task 5.3:** Create KAQG Question Generation Prompt template in Python
+- [x] **Task 5.4:** Generate structured MCQ output JSON (Question, Options A/B/C/D, Correct Answer, Explanation)
+- [x] **Task 5.5:** Implement CLI export flag (`python main.py --generate-qg --difficulty hard --output questions.json`)
+- [x] **Task 5.6:** Final end-to-end verification and performance benchmarks

@@ -1,3 +1,10 @@
 .env
 env
 spec/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+kg/__pycache__/
+tests/__pycache__/
+*.egg-info/
