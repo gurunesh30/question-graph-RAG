@@ -46,7 +46,7 @@ ORDER BY degree DESC
 # Min/Max degree bounds across the whole graph.
 DEGREE_BOUNDS_QUERY = """
 MATCH (c:concept)
-WITH c, size((c)-[:IS_A]-()) AS deg
+WITH c, COUNT { (c)-[:IS_A]-() } AS deg
 RETURN min(deg) AS min_deg,
        max(deg) AS max_deg
 """
