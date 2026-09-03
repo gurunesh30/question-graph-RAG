@@ -215,6 +215,22 @@ Run the offline smoke tests with:
 python tests/test_smoke.py
 ```
 
+The full end-to-end pipeline (PDF → ingest → score → sample → generate →
+export) can be exercised with a single command. It runs live when Neo4j
+is reachable and transparently falls back to an offline dry-run otherwise:
+
+```bash
+make e2e DIFF=hard N=5 OUT=hard.json
+# or directly:
+python tests/e2e_pipeline.py --difficulty hard --count 5 --output hard.json
+```
+
+Verify the Neo4j driver connection with:
+
+```bash
+python tests/verify_neo4j.py
+```
+
 ---
 
 ## 📄 License
