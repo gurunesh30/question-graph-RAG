@@ -8,3 +8,8 @@ __pycache__/
 kg/__pycache__/
 tests/__pycache__/
 *.egg-info/
+e2e_questions.json
+*.questions.json
+hard.json
+medium.json
+easy.json
