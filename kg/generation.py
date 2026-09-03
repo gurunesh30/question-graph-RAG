@@ -33,7 +33,7 @@ class MCQ:
     difficulty: str
     question: str
     options: dict[str, str]
-    answer: str
+    correct_answer: str
     explanation: str
 
     def as_dict(self) -> dict:
@@ -42,7 +42,7 @@ class MCQ:
             "difficulty": self.difficulty,
             "question": self.question,
             "options": self.options,
-            "answer": self.answer,
+            "correct_answer": self.correct_answer,
             "explanation": self.explanation,
         }
 
@@ -68,7 +68,7 @@ Return STRICT JSON in this shape and nothing else:
 {{
   "question": "...",
   "options": {{"A": "...", "B": "...", "C": "...", "D": "..."}},
-  "answer": "A",
+  "correct_answer": "A",
   "explanation": "..."
 }}
 """
@@ -87,7 +87,7 @@ def _headers() -> dict:
 def _parse_response(payload: dict, subgraph: Subgraph, difficulty: str) -> MCQ:
     options = payload.get("options") or {}
     options = {str(k).upper(): str(v) for k, v in options.items()}
-    answer = str(payload.get("answer", "")).strip().upper()
+    answer = str(payload.get("correct_answer") or payload.get("answer") or "").strip().upper()
     if answer not in options:
         # fall back to the first available option label
         answer = next(iter(options.keys()), "A")
@@ -96,7 +96,7 @@ def _parse_response(payload: dict, subgraph: Subgraph, difficulty: str) -> MCQ:
         difficulty=difficulty,
         question=str(payload.get("question", "")).strip(),
         options=options,
-        answer=answer,
+        correct_answer=answer,
         explanation=str(payload.get("explanation", "")).strip(),
     )
 
@@ -123,7 +123,7 @@ def _mock_question(subgraph: Subgraph, difficulty: str) -> MCQ:
         difficulty=difficulty,
         question=f"[{difficulty}] Which of the following is associated with '{subgraph.concept}'?",
         options=options,
-        answer=answer_label,
+        correct_answer=answer_label,
         explanation=f"The correct answer is supported by the knowledge graph for '{subgraph.concept}'.",
     )
 

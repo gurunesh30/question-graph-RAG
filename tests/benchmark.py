@@ -41,7 +41,7 @@ def main() -> None:
         picked = [s for s, d in zipped if lo <= d < hi][:3]
         for sg in picked:
             mcq = _mock_question(sg, band)
-            assert mcq.answer in mcq.options
+            assert mcq.correct_answer in mcq.options
     elapsed = time.perf_counter() - start
     print(f"[bench] {len(subgraphs)} subgraphs scored + 9 mock questions in {elapsed:.3f}s")
 

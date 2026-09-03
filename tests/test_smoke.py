@@ -51,8 +51,12 @@ def test_mock_question_is_deterministic():
     q1 = _mock_question(sg, "medium")
     q2 = _mock_question(sg, "medium")
     assert q1.question == q2.question
-    assert q1.answer == q2.answer
+    assert q1.correct_answer == q2.correct_answer
     assert set(q1.options.keys()) == {"A", "B", "C", "D"}
+    # Spec 5.2 JSON shape must include 'correct_answer' (not 'answer').
+    as_dict = q1.as_dict()
+    assert "correct_answer" in as_dict
+    assert "answer" not in as_dict
 
 
 def test_generate_batch_uses_mock_when_no_key(monkeypatch):
