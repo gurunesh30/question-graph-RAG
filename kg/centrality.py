@@ -25,7 +25,7 @@ import json
 import os
 import subprocess
 from dataclasses import dataclass
-from typing import Iterable
+from typing import Optional
 
 from kg import queries
 from kg.neo4j_client import open_session, run_query
@@ -71,12 +71,40 @@ def _degree_bounds(session) -> tuple[int, int]:
     return int(row["min_deg"] or 0), int(row["max_deg"] or 0)
 
 
-def _edge_projection(session) -> list[dict]:
-    return run_query(session, queries.PAGERANK_PROJECT_QUERY)
+def _build_pagerank_input(session) -> tuple[dict[str, int], list[dict]]:
+    """Return (concept_name -> int_id, edge_list) using Python-assigned IDs.
+
+    Neo4j's internal id() is deprecated in 5.x and elementId() returns strings
+    incompatible with the Rust PageRank binary (expects u64). We assign
+    sequential integers ourselves so no deprecated API is needed.
+    """
+    # Build a sequential integer index over ALL graph nodes.
+    node_rows = run_query(
+        session,
+        "MATCH (n) WHERE n:concept OR n:hierarchy OR n:textual "
+        "RETURN elementId(n) AS eid, labels(n)[0] AS label, n.name AS name",
+    )
+    eid_to_int: dict[str, int] = {r["eid"]: idx for idx, r in enumerate(node_rows)}
+
+    # Fetch edges using elementId (string — no deprecation warning).
+    edge_rows = run_query(session, queries.PAGERANK_PROJECT_QUERY)
+    edges = [
+        {"src": eid_to_int[r["src"]], "dst": eid_to_int[r["dst"]]}
+        for r in edge_rows
+        if r["src"] in eid_to_int and r["dst"] in eid_to_int
+    ]
+
+    # Concept-only sub-index for PageRank score lookup after the binary runs.
+    concept_id_map: dict[str, int] = {
+        r["name"]: eid_to_int[r["eid"]]
+        for r in node_rows
+        if r.get("label") == "concept" and r.get("name")
+    }
+    return concept_id_map, edges
 
 
-def _invoke_pagerank(edges: Iterable[dict]) -> dict[int, float]:
-    payload = {"edges": [{"src": r["src"], "dst": r["dst"]} for r in edges]}
+def _invoke_pagerank(edges: list[dict]) -> dict[int, float]:
+    payload = {"edges": edges}
     proc = subprocess.run(
         [RUST_BINARY],
         input=json.dumps(payload),
@@ -90,11 +118,6 @@ def _invoke_pagerank(edges: Iterable[dict]) -> dict[int, float]:
         return {}
     parsed = json.loads(proc.stdout)
     return {int(r["id"]): float(r["score"]) for r in parsed.get("ranks", [])}
-
-
-def _node_id_lookup(session) -> dict[str, int]:
-    rows = run_query(session, "MATCH (c:concept) RETURN c.name AS name, id(c) AS id")
-    return {r["name"]: int(r["id"]) for r in rows}
 
 
 def _irt_difficulty(degree: int, min_deg: int, max_deg: int) -> float:
@@ -114,9 +137,8 @@ def compute_scores(session) -> list[ConceptScore]:
     """Compute degree, IRT difficulty, and auxiliary centrality per concept."""
     degrees = _degree_scores(session)
     min_deg, max_deg = _degree_bounds(session)
-    id_lookup = _node_id_lookup(session)
-    edge_rows = _edge_projection(session)
-    pagerank_scores = _invoke_pagerank(edge_rows)
+    id_lookup, edges = _build_pagerank_input(session)
+    pagerank_scores = _invoke_pagerank(edges)
 
     out: list[ConceptScore] = []
     for concept, deg in degrees.items():

@@ -29,7 +29,7 @@ ORDER BY degree DESC
 DEGREE_BOUNDS_QUERY = """
 MATCH (c:concept)
 WITH c,
-     size((c)-[:IS_A]-()) AS deg
+     COUNT { (c)-[:IS_A]-() } AS deg
 RETURN min(deg) AS min_deg,
        max(deg) AS max_deg
 """
@@ -42,7 +42,7 @@ MATCH (a)-[r]->(b)
 WHERE (a:concept OR a:hierarchy OR a:textual)
   AND (b:concept OR b:hierarchy OR b:textual)
   AND type(r) IN ['IS_A','INCLUDE_IN','PART_OF']
-RETURN id(a) AS src, id(b) AS dst
+RETURN elementId(a) AS src, elementId(b) AS dst
 """
 
 # Find the highest and lowest raw centrality scores so that the Python
