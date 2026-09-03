@@ -151,8 +151,15 @@ def generate_batch(subgraphs: list[Subgraph], difficulty: str = "medium") -> lis
     return [generate_for_subgraph(sg, difficulty) for sg in subgraphs]
 
 
-if __name__ == "__main__":
+def generate_questions(difficulty: str = "medium", count: int = 5) -> list[dict]:
+    """Phase 5 entrypoint: retrieve subgraphs then generate MCQs."""
     from kg.retrieval import fetch_subgraphs
-    for sg in fetch_subgraphs("easy", 2):
-        mcq = generate_for_subgraph(sg, "easy", use_llm=False)
-        print(mcq.as_dict())
+    subgraphs = fetch_subgraphs(difficulty, count)
+    if not subgraphs:
+        return []
+    return [mcq.as_dict() for mcq in generate_batch(subgraphs, difficulty)]
+
+
+if __name__ == "__main__":
+    for q in generate_questions("easy", 2):
+        print(q)
