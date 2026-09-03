@@ -23,6 +23,17 @@ RETURN c.name      AS concept,
 ORDER BY degree DESC
 """
 
+# Min/Max degree bounds across the whole graph.  These power the IRT
+# normalisation b = 0.1 + (deg - min)/(max - min) * 0.9 in the Python
+# scoring pipeline.
+DEGREE_BOUNDS_QUERY = """
+MATCH (c:concept)
+WITH c,
+     size((c)-[:IS_A]-()) AS deg
+RETURN min(deg) AS min_deg,
+       max(deg) AS max_deg
+"""
+
 # PageRank weights relationships in the concept <-> textual subgraph.
 # We project only the relevant edge types so that the random walk is bounded
 # to knowledge-graph structure (PART_OF / IS_A / INCLUDE_IN).
@@ -66,10 +77,13 @@ RETURN c.name       AS concept,
 """
 
 # Batch update the Neo4j concept node.  We merge so reruns are idempotent.
+# Writes `degree` (raw), `centrality` (degree + PageRank fusion), and
+# `difficulty` (IRT-normalised IRT b parameter in [0.1, 1.0]).
 UPSERT_DIFFICULTY_QUERY = """
 UNWIND $rows AS row
 MATCH (c:concept {name: row.concept})
-SET c.centrality = row.centrality,
-    c.difficulty  = row.difficulty
+SET c.degree     = row.degree,
+    c.centrality = row.centrality,
+    c.difficulty = row.difficulty
 RETURN count(c) AS updated
 """

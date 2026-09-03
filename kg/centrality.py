@@ -1,14 +1,23 @@
 """Centrality scoring engine (Phase 4 of the KAQG pipeline).
 
-Combines the Python-side orchestration logic with the Rust PageRank
-binary.  The pipeline:
+Implements the IRT difficulty mapping from the KAQG spec:
 
-  1. Fetches degree-centrality raw scores from Neo4j via the query module.
-  2. Pulls the (concept, hierarchy, textual) edge projection from Neo4j.
-  3. Invokes the PageRank binary to obtain raw PageRank scores per node id.
-  4. Fuses degree + PageRank into a single centrality score per concept.
-  5. Normalises the scores into the IRT difficulty range [0.1, 1.0].
-  6. Persists ``centrality`` and ``difficulty`` properties back to Neo4j.
+    b_i = 0.1 + (deg_i - min_deg) / (max_deg - min_deg) * 0.9
+
+so the resulting difficulty coefficient `c.difficulty` lives in [0.1, 1.0].
+
+PageRank from the Rust micro-service is computed in parallel and persisted as
+a secondary `c.centrality` enrichment signal that downstream consumers (e.g.
+the Phase 5 sampler) can use to rank candidates.  The IRT formula itself is
+degree-only as specified.
+
+Pipeline:
+  1. Fetch degree per concept from Neo4j.
+  2. Compute min/max degree bounds from Neo4j.
+  3. Project (concept, hierarchy, textual) edges for PageRank.
+  4. Invoke Rust PageRank binary.
+  5. Map degree to IRT b using min-max normalisation.
+  6. Batch-write `degree`, `centrality`, `difficulty` back to Neo4j.
 """
 from __future__ import annotations
 
@@ -26,7 +35,8 @@ RUST_BINARY = os.getenv(
     "./rust_kg_engine/target/release/pagerank",
 )
 
-# Difficulty floor/ceiling chosen to match the KAQG paper specification.
+# Difficulty floor/ceiling chosen to match the KAQG paper specification
+# and the explicit formula in spec/TASKS.md (4.3).
 MIN_DIFFICULTY = 0.1
 MAX_DIFFICULTY = 1.0
 
@@ -34,13 +44,15 @@ MAX_DIFFICULTY = 1.0
 @dataclass
 class ConceptScore:
     name: str
-    raw_score: float
+    degree: int
+    raw_centrality: float
     centrality: float
     difficulty: float
 
     def as_upsert_row(self) -> dict:
         return {
             "concept": self.name,
+            "degree": self.degree,
             "centrality": self.centrality,
             "difficulty": self.difficulty,
         }
@@ -49,6 +61,14 @@ class ConceptScore:
 def _degree_scores(session) -> dict[str, int]:
     rows = run_query(session, queries.DEGREE_CENTRALITY_QUERY)
     return {row["concept"]: int(row["degree"] or 0) for row in rows}
+
+
+def _degree_bounds(session) -> tuple[int, int]:
+    rows = run_query(session, queries.DEGREE_BOUNDS_QUERY)
+    if not rows:
+        return 0, 0
+    row = rows[0]
+    return int(row["min_deg"] or 0), int(row["max_deg"] or 0)
 
 
 def _edge_projection(session) -> list[dict]:
@@ -77,49 +97,42 @@ def _node_id_lookup(session) -> dict[str, int]:
     return {r["name"]: int(r["id"]) for r in rows}
 
 
-def _normalise(scores: list[float]) -> list[float]:
-    """Linear min-max normalise into [MIN_DIFFICULTY, MAX_DIFFICULTY]."""
-    if not scores:
-        return []
-    lo, hi = min(scores), max(scores)
-    span = hi - lo
-    if span == 0:
-        # All concepts are equally central; pick the midpoint difficulty.
-        mid = (MIN_DIFFICULTY + MAX_DIFFICULTY) / 2.0
-        return [mid for _ in scores]
-    scaled = [MIN_DIFFICULTY + (s - lo) * (MAX_DIFFICULTY - MIN_DIFFICULTY) / span for s in scores]
-    # Guard against floating-point drift past the inclusive upper bound.
-    return [min(MAX_DIFFICULTY, max(MIN_DIFFICULTY, x)) for x in scaled]
+def _irt_difficulty(degree: int, min_deg: int, max_deg: int) -> float:
+    """Spec 4.3: b = 0.1 + (deg - min) / (max - min) * 0.9, clamped to [0.1, 1.0]."""
+    if max_deg == min_deg:
+        return (MIN_DIFFICULTY + MAX_DIFFICULTY) / 2.0
+    raw = MIN_DIFFICULTY + (degree - min_deg) * (MAX_DIFFICULTY - MIN_DIFFICULTY) / (max_deg - min_deg)
+    return min(MAX_DIFFICULTY, max(MIN_DIFFICULTY, raw))
+
+
+def _fuse_centrality(degree: int, pagerank: float) -> float:
+    """Optional secondary score: degree + scaled PageRank, kept for ranking."""
+    return float(degree) + 10.0 * pagerank
 
 
 def compute_scores(session) -> list[ConceptScore]:
-    """Compute centrality + difficulty for every concept node."""
+    """Compute degree, IRT difficulty, and auxiliary centrality per concept."""
     degrees = _degree_scores(session)
+    min_deg, max_deg = _degree_bounds(session)
     id_lookup = _node_id_lookup(session)
     edge_rows = _edge_projection(session)
     pagerank_scores = _invoke_pagerank(edge_rows)
 
-    raw_scores: list[float] = []
-    concept_order: list[str] = []
+    out: list[ConceptScore] = []
     for concept, deg in degrees.items():
         node_id = id_lookup.get(concept)
         pr = pagerank_scores.get(node_id, 0.0) if node_id is not None else 0.0
-        # Weighted fusion: degree captures immediate density, PageRank
-        # captures structural importance in the whole graph.
-        raw = deg + 10.0 * pr
-        raw_scores.append(raw)
-        concept_order.append(concept)
-
-    normalised = _normalise(raw_scores)
-    return [
-        ConceptScore(
-            name=concept,
-            raw_score=raw,
-            centrality=raw,
-            difficulty=difficulty,
+        difficulty = _irt_difficulty(deg, min_deg, max_deg)
+        out.append(
+            ConceptScore(
+                name=concept,
+                degree=deg,
+                raw_centrality=pr,
+                centrality=_fuse_centrality(deg, pr),
+                difficulty=difficulty,
+            )
         )
-        for concept, raw, difficulty in zip(concept_order, raw_scores, normalised)
-    ]
+    return out
 
 
 def persist_scores(session, scores: list[ConceptScore]) -> int:

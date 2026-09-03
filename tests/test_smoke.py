@@ -11,23 +11,33 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from kg import retrieval
 from kg.generation import _mock_question, generate_batch
-from kg.centrality import _normalise
+from kg.centrality import _irt_difficulty
+
+
+def test_irt_difficulty_matches_spec_formula():
+    # b = 0.1 + (deg - min)/(max - min) * 0.9
+    #   deg=0 -> 0.1
+    #   deg=5, min=0, max=10 -> 0.1 + 0.5*0.9 = 0.55
+    #   deg=10 -> 1.0
+    assert _irt_difficulty(0, 0, 10) == 0.1
+    assert _irt_difficulty(5, 0, 10) == 0.55
+    assert _irt_difficulty(10, 0, 10) == 1.0
+
+
+def test_irt_difficulty_handles_degenerate_input():
+    # All degrees equal -> midpoint of [0.1, 1.0].
+    assert _irt_difficulty(7, 7, 7) == 0.55
+
+
+def test_irt_difficulty_clamps_outliers():
+    # A degree below the min should still hit the floor.
+    assert _irt_difficulty(-1, 0, 10) == 0.1
+    # A degree above the max should still hit the ceiling.
+    assert _irt_difficulty(99, 0, 10) == 1.0
 
 
 def test_difficulty_bands_have_three_tiers():
     assert set(retrieval.DIFFICULTY_BANDS) == {"easy", "medium", "hard"}
-
-
-def test_normalisation_clips_into_range():
-    scores = _normalise([1.0, 5.0, 10.0])
-    assert min(scores) >= 0.1
-    assert max(scores) <= 1.0
-    assert scores == sorted(scores) or all(0.1 <= s <= 1.0 for s in scores)
-
-
-def test_normalisation_handles_degenerate_input():
-    scores = _normalise([3.0, 3.0, 3.0])
-    assert all(s == 0.55 for s in scores)
 
 
 def test_mock_question_is_deterministic():
@@ -60,8 +70,9 @@ def test_generate_batch_uses_mock_when_no_key(monkeypatch):
 
 
 if __name__ == "__main__":
+    test_irt_difficulty_matches_spec_formula()
+    test_irt_difficulty_handles_degenerate_input()
+    test_irt_difficulty_clamps_outliers()
     test_difficulty_bands_have_three_tiers()
-    test_normalisation_clips_into_range()
-    test_normalisation_handles_degenerate_input()
     test_mock_question_is_deterministic()
     print("[smoke] all offline checks passed")
