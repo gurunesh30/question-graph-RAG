@@ -1,0 +1,1 @@
+"""KAQG FastAPI backend package."""
