@@ -137,6 +137,9 @@ class ConceptScore:
             "difficulty": self.difficulty,
         }
 
+    def to_dict(self) -> dict[str, Any]:
+        return self.to_upsert_row()
+
 
 # ---------------------------------------------------------------------------
 # Retrieval
